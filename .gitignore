@@ -1,4 +1,4 @@
 .venv/
 __pycache__/
 .env
-local_bridge.py
+arduino_bridge.py
