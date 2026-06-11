@@ -5,54 +5,127 @@ from datetime import datetime
 
 SERIAL_PORT = 'COM3'
 BAUD_RATE = 115200
-AZURE_URL = 'https://msdocs-python-webapp-quickstart-123-g0gvekgafpe0hzgt.polandcentral-01.azurewebsites.net/'
+
+# IMPORTANT: no trailing slash
+AZURE_URL = 'https://msdocs-python-webapp-quickstart-123-g0gvekgafpe0hzgt.polandcentral-01.azurewebsites.net'
+
 POLL_INTERVAL = 2
+
 
 def connect_serial():
     while True:
         try:
-            ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+            ser = serial.Serial(
+                SERIAL_PORT,
+                BAUD_RATE,
+                timeout=1
+            )
+
             print(f'Connected to Arduino on {SERIAL_PORT}')
             return ser
+
         except Exception as e:
-            print(f'Serial connection failed: {e}. Retrying in 5s...')
+            print(f'Serial connection failed: {e}')
+            print('Retrying in 5 seconds...')
             time.sleep(5)
+
 
 def send_to_azure(endpoint, data):
     try:
-        res = requests.post(f'{AZURE_URL}{endpoint}', json=data, timeout=5)
-        return res.status_code == 200
+        url = f'{AZURE_URL}{endpoint}'
+
+        print(f'\nPOST → {url}')
+        print(f'Payload → {data}')
+
+        res = requests.post(
+            url,
+            json=data,
+            timeout=10
+        )
+
+        print(f'Status → {res.status_code}')
+        print(f'Response → {res.text}')
+
+        return res.ok
+
     except Exception as e:
         print(f'Azure request failed: {e}')
         return False
 
+
 def get_pending_command():
     try:
-        res = requests.get(f'{AZURE_URL}/pending', timeout=5)
+        url = f'{AZURE_URL}/pending'
+
+        res = requests.get(
+            url,
+            timeout=10
+        )
+
+        print(f'GET /pending → {res.status_code}')
+
+        if not res.ok:
+            return None
+
         data = res.json()
+
         return data.get('command')
+
     except Exception as e:
         print(f'Failed to get pending command: {e}')
         return None
 
+
 def process_serial_line(line):
-    print(f'Arduino: {line}')
+    print(f'Arduino → {line}')
 
     if line.startswith('TEMP:'):
         try:
             temp = float(line.split(':')[1])
-            send_to_azure('/update', { 'temperature': temp })
+
+            success = send_to_azure(
+                '/update',
+                {
+                    'temperature': temp
+                }
+            )
+
+            if success:
+                print('Temperature uploaded')
+
         except ValueError:
             print('Invalid temperature value')
 
     elif line.startswith('LED:'):
         state = line.split(':')[1].strip()
-        send_to_azure('/update', { 'led': state == 'ON' })
+
+        success = send_to_azure(
+            '/update',
+            {
+                'led': state == 'ON'
+            }
+        )
+
+        if success:
+            print('LED state uploaded')
 
     elif line == 'FLOOD:DETECTED':
-        event_time = datetime.now().strftime('%d %b %Y, %H:%M:%S')
-        send_to_azure('/flood', { 'time': event_time })
-        print(f'Flood detected at {event_time}')
+
+        event_time = datetime.now().strftime(
+            '%d %b %Y, %H:%M:%S'
+        )
+
+        success = send_to_azure(
+            '/flood',
+            {
+                'time': event_time
+            }
+        )
+
+        if success:
+            print(f'Flood uploaded → {event_time}')
+        else:
+            print('Flood upload FAILED')
 
     elif line == 'FLOOD:CLEARED':
         print('Flood cleared')
@@ -61,42 +134,78 @@ def process_serial_line(line):
         print('Message saved to EEPROM')
 
     elif line.startswith('ERROR:'):
-        print(f'Arduino error: {line}')
+        print(f'Arduino error → {line}')
+
 
 def main():
+
     ser = connect_serial()
-    print(f'Bridge running. Connecting to: {AZURE_URL}')
+
+    print(f'Bridge running')
+    print(f'Backend → {AZURE_URL}')
 
     last_poll = time.time()
 
     while True:
         try:
+
             if ser.in_waiting:
+
                 raw = ser.readline()
+
                 try:
-                    line = raw.decode('utf-8').strip()
+                    line = raw.decode(
+                        'utf-8'
+                    ).strip()
+
                     if line:
                         process_serial_line(line)
+
                 except UnicodeDecodeError:
-                    print('Could not decode serial line, skipping')
+                    print('Could not decode serial')
 
             if time.time() - last_poll >= POLL_INTERVAL:
+
                 command = get_pending_command()
+
                 if command:
-                    print(f'Sending command to Arduino: {command}')
-                    ser.write((command + '\n').encode('utf-8'))
+
+                    print(
+                        f'Sending to Arduino → {command}'
+                    )
+
+                    ser.write(
+                        (command + '\n').encode('utf-8')
+                    )
+
                 last_poll = time.time()
 
         except serial.SerialException as e:
-            print(f'Serial connection lost: {e}. Reconnecting...')
+
+            print(
+                f'Serial lost → {e}'
+            )
+
+            try:
+                ser.close()
+            except:
+                pass
+
             ser = connect_serial()
 
         except KeyboardInterrupt:
-            print('Bridge stopped by user')
-            ser.close()
+
+            print('Bridge stopped')
+
+            try:
+                ser.close()
+            except:
+                pass
+
             break
 
         time.sleep(0.05)
+
 
 if __name__ == '__main__':
     main()
