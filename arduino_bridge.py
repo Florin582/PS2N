@@ -59,6 +59,9 @@ def process_serial_line(line):
 
     elif line == 'MSG:SAVED':
         print('Message saved to EEPROM')
+        
+    elif line.startswith('EEPROM:'):
+        print(f'EEPROM Content → {line[7:]}')
 
     elif line.startswith('ERROR:'):
         print(f'Arduino error: {line}')

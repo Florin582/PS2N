@@ -57,7 +57,7 @@ def message():
     data = request.get_json()
     msg = data.get('text', '').strip()
     if msg:
-        pending_command = 'MSG:' + msg
+        pending_command = msg
         return jsonify({ 'status': 'sent' })
     return jsonify({ 'status': 'error', 'reason': 'empty message' }), 400
 
